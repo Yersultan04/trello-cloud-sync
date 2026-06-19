@@ -38,11 +38,23 @@ def trello(path: str, **params) -> object:
         return json.loads(r.read().decode())
 
 
+def esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def telegram(text: str) -> None:
     url = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"],
-                                   "text": text}).encode()
+                                   "text": text, "parse_mode": "HTML",
+                                   "disable_web_page_preview": "true"}).encode()
     urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20).read()
+
+
+# служебные/почтовые карточки — не проектные задачи, в сверке не участвуют
+def is_utility(name: str) -> bool:
+    n = name.lower()
+    return (name.startswith(("✉️", "📬")) or "ответить:" in n or "сообщение:" in n
+            or "how this board works" in n or "почта" in n and "сводка" in n)
 
 
 def main() -> None:
@@ -54,7 +66,7 @@ def main() -> None:
     items = []
     for c in cards:
         col = id_to_col.get(c["idList"], "?")
-        if col == "Done":
+        if col == "Done" or is_utility(c["name"]):
             continue
         items.append({"name": c["name"], "column": col,
                       "labels": [labels.get(x, "") for x in c.get("idLabels", [])]})
@@ -68,18 +80,21 @@ def main() -> None:
     issues = json.loads(resp.choices[0].message.content).get("issues", [])
 
     if not issues:
-        telegram("🔍 Сверка доски: чисто, замечаний нет 👍")
+        telegram("🔍 <b>Сверка доски</b>\n\nЧисто, замечаний нет 👍")
         print("чисто")
         return
 
-    tname = {"duplicate": "Дубль", "no_project": "Нет проекта",
-             "looks_done": "Похоже сделано", "wrong_column": "Не та колонка"}
-    lines = [f"🔍 Сверка доски: {len(issues)} замечаний", ""]
-    for i in issues[:15]:
-        lines.append(f"• {tname.get(i.get('type'), i.get('type'))}: {', '.join(i.get('cards', []))}")
+    tname = {"duplicate": "♻️ Дубль", "no_project": "🏷 Нет проекта",
+             "looks_done": "✅ Похоже сделано", "wrong_column": "↔️ Не та колонка"}
+    lines = [f"🔍 <b>Сверка доски</b> · {len(issues)} замечаний", ""]
+    for i in issues[:12]:
+        lines.append(f"<b>{tname.get(i.get('type'), esc(str(i.get('type'))))}</b>")
+        for card in i.get("cards", [])[:8]:
+            lines.append(f"      • {esc(card)}")
         if i.get("note"):
-            lines.append(f"  {i['note']}")
-    telegram("\n".join(lines))
+            lines.append(f"      <i>{esc(i['note'])}</i>")
+        lines.append("")
+    telegram("\n".join(lines).strip())
     print(f"замечаний: {len(issues)}")
 
 

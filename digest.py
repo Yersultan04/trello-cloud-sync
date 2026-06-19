@@ -28,10 +28,15 @@ def trello(path: str, **params) -> object:
         return json.loads(r.read().decode())
 
 
+def esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def telegram(text: str) -> None:
     url = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"],
-                                   "text": text}).encode()
+                                   "text": text, "parse_mode": "HTML",
+                                   "disable_web_page_preview": "true"}).encode()
     urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20).read()
 
 
@@ -55,32 +60,38 @@ def main() -> None:
                 return labels[lid]
         return ""
 
+    Q_EMOJI = {0: "🔴", 1: "🟡", 2: "🟠", 3: "⚪", 4: "▪️"}
+
     in_prog = [c for c in cards if id_to_col.get(c["idList"]) == IN_PROGRESS]
     up_next = sorted([c for c in cards if id_to_col.get(c["idList"]) == "Up Next"],
                      key=quad)
 
-    lines = ["☀️ Приоритеты на сегодня", ""]
+    def row(c: dict) -> str:
+        rank, _ = quad(c)
+        p = project(c)
+        tail = f"  <i>{esc(p)}</i>" if p else ""
+        return f"{Q_EMOJI[rank]} {esc(c['name'])}{tail}"
 
-    wip = f"  ⚠️ WIP {len(in_prog)} > {WIP_LIMIT} — доводи, а не начинай!" if len(in_prog) > WIP_LIMIT else ""
-    lines.append(f"🔨 В работе ({len(in_prog)}){wip}")
+    L = ["☀️ <b>Приоритеты на сегодня</b>", ""]
+
+    head = f"🔨 <b>В работе</b> · {len(in_prog)}"
+    if len(in_prog) > WIP_LIMIT:
+        head += f"  ⚠️ &gt; {WIP_LIMIT}, доводи!"
+    L.append(head)
     if in_prog:
-        for c in in_prog[:6]:
-            p = project(c)
-            lines.append(f"  • {c['name']}" + (f" [{p}]" if p else ""))
+        L += [f"      {row(c)}" for c in in_prog[:6]]
     else:
-        lines.append("  — пусто")
+        L.append("      <i>пусто</i>")
 
-    lines.append("")
-    lines.append("🎯 Дальше (по Эйзенхауэру)")
+    L += ["", "🎯 <b>Дальше</b> <i>(по Эйзенхауэру)</i>"]
     if up_next:
-        for c in up_next[:8]:
-            _, q = quad(c)
-            p = project(c)
-            lines.append(f"  {q} · {c['name']}" + (f" [{p}]" if p else ""))
+        L += [f"      {row(c)}" for c in up_next[:8]]
     else:
-        lines.append("  — пусто")
+        L.append("      <i>пусто</i>")
 
-    telegram("\n".join(lines))
+    L += ["", "<i>🔴Q1 срочно+важно 🟡Q2 важно 🟠Q3 делегировать ⚪Q4 потом</i>"]
+
+    telegram("\n".join(L))
     print("digest отправлен:", len(in_prog), "в работе,", len(up_next), "дальше")
 
 
