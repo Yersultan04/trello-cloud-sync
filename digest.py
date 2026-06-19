@@ -31,7 +31,7 @@ def trello(path: str, **params) -> object:
 def telegram(text: str) -> None:
     url = f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"],
-                                   "text": text, "parse_mode": "Markdown"}).encode()
+                                   "text": text}).encode()
     urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20).read()
 
 
@@ -59,24 +59,24 @@ def main() -> None:
     up_next = sorted([c for c in cards if id_to_col.get(c["idList"]) == "Up Next"],
                      key=quad)
 
-    lines = ["☀️ *Приоритеты на сегодня*", ""]
+    lines = ["☀️ Приоритеты на сегодня", ""]
 
     wip = f"  ⚠️ WIP {len(in_prog)} > {WIP_LIMIT} — доводи, а не начинай!" if len(in_prog) > WIP_LIMIT else ""
-    lines.append(f"🔨 *В работе* ({len(in_prog)}){wip}")
+    lines.append(f"🔨 В работе ({len(in_prog)}){wip}")
     if in_prog:
         for c in in_prog[:6]:
             p = project(c)
-            lines.append(f"  • {c['name']}" + (f" _{p}_" if p else ""))
+            lines.append(f"  • {c['name']}" + (f" [{p}]" if p else ""))
     else:
         lines.append("  — пусто")
 
     lines.append("")
-    lines.append("🎯 *Дальше* (по Эйзенхауэру)")
+    lines.append("🎯 Дальше (по Эйзенхауэру)")
     if up_next:
         for c in up_next[:8]:
             _, q = quad(c)
             p = project(c)
-            lines.append(f"  {q} {c['name']}" + (f" _{p}_" if p else ""))
+            lines.append(f"  {q} · {c['name']}" + (f" [{p}]" if p else ""))
     else:
         lines.append("  — пусто")
 
