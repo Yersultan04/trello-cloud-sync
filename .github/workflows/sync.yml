@@ -1,0 +1,46 @@
+name: Trello Sync
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # каждые 15 минут
+  workflow_dispatch:          # ручной запуск кнопкой
+
+permissions:
+  contents: write             # чтобы коммитить state.json обратно
+
+concurrency:
+  group: trello-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet groq
+
+      - name: Run sync
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: python sync.py
+
+      - name: Persist state
+        run: |
+          git config user.name "trello-sync-bot"
+          git config user.email "actions@github.com"
+          if ! git diff --quiet state.json; then
+            git add state.json
+            git commit -m "chore: update sync state [skip ci]"
+            git push
+          else
+            echo "state не изменился"
+          fi
