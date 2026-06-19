@@ -44,3 +44,10 @@ jobs:
           else
             echo "state не изменился"
           fi
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode "text=🔴 Сбой: ${{ github.workflow }} упал. Actions → ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
