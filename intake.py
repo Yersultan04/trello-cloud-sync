@@ -84,13 +84,35 @@ def parse_task(text: str) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
-def create_task(text: str, col_id: dict, label_id: dict) -> str:
+def find_duplicate(title: str, open_names: list[str]) -> str | None:
+    if not open_names:
+        return None
+    client = Groq(api_key=GROQ_KEY)
+    resp = client.chat.completions.create(
+        model=GROQ_MODEL, temperature=0, response_format={"type": "json_object"},
+        messages=[{"role": "system", "content":
+                   "Есть ли в списке карточка про ТО ЖЕ самое, что новая задача? "
+                   'Верни точное имя дубля или null. JSON: {"dup":"<имя|null>"}'},
+                  {"role": "user", "content": json.dumps(
+                      {"new": title, "cards": open_names}, ensure_ascii=False)}])
+    return json.loads(resp.choices[0].message.content).get("dup")
+
+
+def create_task(text: str, col_id: dict, label_id: dict, id_to_col: dict) -> str:
     p = parse_task(text)
     quad = p.get("eisenhower", "Q2")
     if quad not in EISENHOWER:
         quad = "Q2"
     column = Q_COLUMN.get(quad, "Backlog")
     title = (p.get("title") or text)[:120]
+
+    # dedup against open cards
+    cards = trello("GET", f"boards/{BOARD}/cards", fields="name,idList")
+    open_names = [c["name"] for c in cards if id_to_col.get(c["idList"]) != "Done"]
+    dup = find_duplicate(title, open_names)
+    if dup:
+        return f"♻️ Уже есть похожая, не дублирую:\n{dup}"
+
     labels = [label_id[EISENHOWER[quad]]]
     proj = p.get("project", "General")
     if proj in label_id:
@@ -162,7 +184,7 @@ def main() -> None:
             elif text.startswith("/start"):
                 reply = "Привет! Пиши задачу — добавлю в Trello. /board — доска, /done <что> — закрыть."
             else:
-                reply = create_task(text, col_id, label_id)
+                reply = create_task(text, col_id, label_id, id_to_col)
         except Exception as exc:
             reply = f"⚠️ Ошибка: {exc}"
         tg("sendMessage", chat_id=chat, text=reply, parse_mode="Markdown")
